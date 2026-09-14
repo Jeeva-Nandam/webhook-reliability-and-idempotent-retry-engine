@@ -47,95 +47,6 @@ breakdown.
 FastAPI, Pydantic, SQLAlchemy 2.x, Alembic, PostgreSQL, Celery, Redis,
 Pytest/HTTPX, Ruff/Black, Docker/Compose, GitHub Actions, React + Vite.
 
-## Project Structure
-
-webhook-reliability-engine/
-├── docker-compose.yml
-├── README.md
-├── backend/
-│   ├── .env
-│   ├── Dockerfile
-│   ├── alembic.ini
-│   ├── pyproject.toml
-│   ├── pytest.ini
-│   ├── requirements.txt
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py
-│   │   ├── api/
-│   │   │   ├── __init__.py
-│   │   │   └── routes/
-│   │   │       ├── __init__.py
-│   │   │       ├── health.py
-│   │   │       ├── metrics.py
-│   │   │       ├── test_downstream.py
-│   │   │       └── webhooks.py
-│   │   ├── core/
-│   │   │   ├── __init__.py
-│   │   │   ├── config.py
-│   │   │   ├── logging.py
-│   │   │   └── security.py
-│   │   ├── db/
-│   │   │   ├── __init__.py
-│   │   │   ├── database.py
-│   │   │   └── models/
-│   │   │       ├── __init__.py
-│   │   │       ├── webhook_attempt.py
-│   │   │       └── webhook_event.py
-│   │   ├── schemas/
-│   │   │   ├── __init__.py
-│   │   │   └── webhook.py
-│   │   ├── services/
-│   │   │   ├── __init__.py
-│   │   │   ├── downstream_service.py
-│   │   │   ├── retry_service.py
-│   │   │   └── webhook_service.py
-│   │   └── workers/
-│   │       ├── __init__.py
-│   │       ├── celery_app.py
-│   │       └── webhook_tasks.py
-│   ├── migrations/
-│   │   ├── env.py
-│   │   ├── script.py.mako
-│   │   └── versions/
-│   │       └── 0001_initial_schema.py
-│   └── tests/
-│       ├── __init__.py
-│       ├── conftest.py
-│       ├── integration/
-│       │   ├── __init__.py
-│       │   ├── test_idempotency.py
-│       │   ├── test_retry_flow.py
-│       │   └── test_webhook_api.py
-│       └── unit/
-│           ├── __init__.py
-│           ├── test_retry_backoff.py
-│           ├── test_signature.py
-│           └── test_state_machine.py
-├── docs/
-│   ├── HLD.md
-│   ├── LLD.md
-│   ├── INTERVIEW_PREP.md
-│   └── 01-ARCHITECTURE.md
-└── frontend/
-    ├── Dockerfile
-    ├── index.html
-    ├── package.json
-    ├── vite.config.js
-    └── src/
-        ├── App.jsx
-        ├── index.css
-        ├── main.jsx
-        ├── components/
-        │   ├── EventDetail.jsx
-        │   ├── EventList.jsx
-        │   ├── MetricsSummary.jsx
-        │   └── StatusBadge.jsx
-        ├── pages/
-        │   └── Dashboard.jsx
-        └── services/
-            └── api.js
-
 ## System Flow
 
 1. `POST /api/v1/webhooks` — verify HMAC signature, validate schema, insert
@@ -230,6 +141,7 @@ auto-generated Swagger UI).
 ### With Docker Compose (recommended)
 
 ```bash
+cp backend/.env.example backend/.env   # edit WEBHOOK_SECRET at minimum
 docker compose up --build
 ```
 
@@ -245,6 +157,7 @@ so the schema is created automatically on first boot.
 ```bash
 cd backend
 pip install -r requirements.txt
+cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
 # in another terminal:
@@ -295,6 +208,39 @@ demonstrated without a real third-party integration.
   attempt history.
 - **Exhausted retries**: an event that keeps failing moves to `DEAD` after
   `max_retries` attempts and appears on the dashboard for manual retry.
+
+## Using This as a Relay in Front of Your Own App
+
+By default, the worker calls a built-in simulator (`downstream_service.py`)
+so the whole system is demonstrable without any external dependency. Set
+`TARGET_URL` in `backend/.env` to make the worker forward real, signed
+events to your own application instead — everything else (idempotency,
+retries, dead-lettering, the dashboard) works identically either way,
+since none of that logic cares what's on the other end of the call.
+
+```
+Provider (Stripe/GitHub/your own frontend's backend)
+        │
+        ▼
+  This engine  ← verifies signature, dedupes by event_id, retries on failure
+        │
+        ▼  (forwards as a signed HTTP POST once verified)
+  Your application's endpoint
+```
+
+The forwarded request carries an `X-Engine-Signature` header — HMAC-SHA256
+over the raw body, signed with the same `WEBHOOK_SECRET` — so your endpoint
+can verify the call genuinely came from this engine. A 2xx response is
+treated as success; anything else (4xx, 5xx, timeout, connection error)
+feeds into the exact same retry/dead-letter logic used everywhere else.
+
+**`demo-app/`** is a complete, minimal worked example of an application
+sitting behind this engine: a browser form that generates one idempotency
+key per user action, its own backend that signs and forwards to this
+engine, and a callback endpoint that verifies the engine's signature and
+does the real work (with its own defense-in-depth duplicate check). Run
+`docker compose up --build` and visit http://localhost:4000 — click
+"Simulate double-click (5x)" and watch exactly one post get created.
 
 ## Future Improvements
 
