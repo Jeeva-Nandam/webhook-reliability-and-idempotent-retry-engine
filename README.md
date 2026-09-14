@@ -48,7 +48,7 @@ FastAPI, Pydantic, SQLAlchemy 2.x, Alembic, PostgreSQL, Celery, Redis,
 Pytest/HTTPX, Ruff/Black, Docker/Compose, GitHub Actions, React + Vite.
 
 ## Project Structure
-
+```
 webhook-reliability-engine/
 ├── docker-compose.yml
 ├── README.md
@@ -135,7 +135,7 @@ webhook-reliability-engine/
         │   └── Dashboard.jsx
         └── services/
             └── api.js
-
+```
 ## System Flow
 
 1. `POST /api/v1/webhooks` — verify HMAC signature, validate schema, insert
