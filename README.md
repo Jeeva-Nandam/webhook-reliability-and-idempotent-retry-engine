@@ -47,6 +47,7 @@ breakdown.
 FastAPI, Pydantic, SQLAlchemy 2.x, Alembic, PostgreSQL, Celery, Redis,
 Pytest/HTTPX, Ruff/Black, Docker/Compose, GitHub Actions, React + Vite.
 
+        
 ## System Flow
 
 1. `POST /api/v1/webhooks` — verify HMAC signature, validate schema, insert
